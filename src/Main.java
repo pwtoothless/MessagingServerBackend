@@ -19,7 +19,7 @@ public class Main {
     /**
      * The port number for the HTTP and WebSocket server.
      */
-    private static final int HTTP_PORT = 8080;
+    private static final int HTTP_PORT = 8082;
     private static final int WS_PORT = 8081;
 
     /**
@@ -56,18 +56,28 @@ public class Main {
                 // Read the request body
                 InputStream inputStream = exchange.getRequestBody();
                 String requestBody = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+                System.out.println(requestBody);
 
                 // For simplicity, we'll just check if the request body contains a username and password.
                 // In a real application, you would parse the JSON and check against a database.
                 if (requestBody.contains("username") && requestBody.contains("password")) {
-                	
-                	// Add Auth code Here
-                	
-                    String response = "{\"success\": true}";
-                    exchange.sendResponseHeaders(200, response.length());
-                    OutputStream os = exchange.getResponseBody();
-                    os.write(response.getBytes());
-                    os.close();
+                	if (auth.isCorrect(requestBody)) {
+                	    // Success Case
+                	    String response = "{\"success\": true}";
+                	    exchange.sendResponseHeaders(200, response.length());
+                	    OutputStream os = exchange.getResponseBody();
+                	    os.write(response.getBytes());
+                	    os.close();
+                	} else {
+                	    // --- NEW CODE: Failure Case ---
+                	    // You MUST send a response here, or the browser will hang!
+                	    System.out.println("Wrong Password, or Other Error");
+                	    String response = "{\"success\": false, \"message\": \"Wrong username or password\"}";
+                	    exchange.sendResponseHeaders(401, response.length()); // 401 = Unauthorized
+                	    OutputStream os = exchange.getResponseBody();
+                	    os.write(response.getBytes());
+                	    os.close(); 
+                	}
                 } else {
                     String response = "{\"success\": false, \"message\": \"Invalid request\"}";
                     exchange.sendResponseHeaders(400, response.length());
