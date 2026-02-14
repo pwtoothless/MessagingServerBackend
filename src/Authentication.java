@@ -4,33 +4,35 @@ import java.io.FileReader;
 import java.io.IOException;
 
 public class Authentication {
-    public boolean isCorrect(String requestedAccount) {
-        Gson gson = new Gson();
-        // NOTE: Ensure this path is correct relative to where you run the Java command
-        try (JsonReader reader = new JsonReader(new FileReader("./assets/passwords.json"))) {
-            
-            // 1. Read the file into the corrected data class
-            UserFile data = gson.fromJson(reader, UserFile.class);
-            
-            // 2. Parse the web request
-            AuthParser.Credentials requestCreds = AuthParser.parse(requestedAccount);
-            
-            // 3. Create credentials from the file data for comparison
-            AuthParser.Credentials fileCreds = new AuthParser.Credentials(data.getUsername(), data.getPassword());
+	public boolean isCorrect(String requestedAccount) {
+	    Gson gson = new Gson();
+	    try (JsonReader reader = new JsonReader(new FileReader("./assets/passwords.json"))) {
+	        
+	        // 1. Read the JSON as an Array of users (UserFile[].class), not a single object
+	        UserFile[] allUsers = gson.fromJson(reader, UserFile[].class);
+	        
+	        // 2. Parse the incoming web request once
+	        AuthParser.Credentials requestCreds = AuthParser.parse(requestedAccount);
+	        
+	        // 3. Loop through EVERY user in the file to check for a match
+	        for (UserFile user : allUsers) {
+	            AuthParser.Credentials fileCreds = new AuthParser.Credentials(user.getUsername(), user.getPassword());
+	            
+	            if (requestCreds.equals(fileCreds)) {
+	                System.out.println("Yay, you're in (Matched User: " + user.getUsername() + ")");
+	                return true; // Found a match! Stop looking.
+	            }
+	        }
+	        
+	        // 4. If the loop finishes and we haven't returned true, no match was found
+	        System.out.println("Get good at typing, and remembering");
+	        return false;
 
-            // 4. Compare
-            if (requestCreds.equals(fileCreds)) {
-                System.out.println("Yay, you're in");
-                return true;
-            } else {
-                System.out.println("Get good at typing, and remembering");
-                return false;
-            }
-        } catch (Exception e) { // Catching generic Exception to see parsing errors too
-            e.printStackTrace();
-        }
-        return false;
-    }
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	    return false;
+	}
 
     // Renamed to match the JSON keys: "username" and "password"
     public class UserFile {
