@@ -1,12 +1,11 @@
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.Collections;
-import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -14,70 +13,44 @@ import org.java_websocket.server.WebSocketServer;
 
 import com.sun.net.httpserver.HttpServer;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+
 public class Main {
 
-    /**
-     * The port number for the HTTP and WebSocket server.
-     */
     private static final int HTTP_PORT = 8082;
     private static final int WS_PORT = 8081;
 
-    /**
-     * A set to store all active WebSocket connections.
-     * This is thread-safe.
-     */
-    private static final Set<WebSocket> clients = Collections.synchronizedSet(new HashSet<>());
+    private static final Map<WebSocket, String> activeUsers = new ConcurrentHashMap<>();
+    private static final Map<String, Set<String>> voiceChannels = new ConcurrentHashMap<>();
+    private static final Gson gson = new Gson();
 
-    public static void main(String[] args) throws IOException{
-    	// My Auth Backend
-    	Authentication auth = new Authentication();
-    	
-        // --- HTTP Server Setup ---
+    public static void main(String[] args) throws IOException {
+        Authentication auth = new Authentication();
         HttpServer httpServer = HttpServer.create(new InetSocketAddress(HTTP_PORT), 0);
 
-        // Context for the login handler
         httpServer.createContext("/login", exchange -> {
-            //
-            // THIS IS A VERY IMPORTANT NOTE
-            //
-            // The following line is CRUCIAL for handling Cross-Origin Resource Sharing (CORS) requests.
-            // Modern web browsers, for security reasons, block web pages from making requests
-            // to a different domain than the one that served the page. This is known as the
-            // Same-Origin Policy.
-            //
-            // By adding the 'Access-Control-Allow-Origin' header with a value of "*", we are
-            // telling the browser that any origin is allowed to access this resource. This is
-            // generally fine for development purposes, but in a production environment, you
-            // would want to restrict this to the specific domain of your website,
-            // for example: "https://your-website.com".
-            //
             exchange.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
+            
             if ("POST".equalsIgnoreCase(exchange.getRequestMethod())) {
-                // Read the request body
                 InputStream inputStream = exchange.getRequestBody();
                 String requestBody = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
-                System.out.println(requestBody);
 
-                // For simplicity, we'll just check if the request body contains a username and password.
-                // In a real application, you would parse the JSON and check against a database.
                 if (requestBody.contains("username") && requestBody.contains("password")) {
-                	if (auth.isCorrect(requestBody)) {
-                	    // Success Case
-                	    String response = "{\"success\": true}";
-                	    exchange.sendResponseHeaders(200, response.length());
-                	    OutputStream os = exchange.getResponseBody();
-                	    os.write(response.getBytes());
-                	    os.close();
-                	} else {
-                	    // --- NEW CODE: Failure Case ---
-                	    // You MUST send a response here, or the browser will hang!
-                	    System.out.println("Wrong Password, or Other Error");
-                	    String response = "{\"success\": false, \"message\": \"Wrong username or password\"}";
-                	    exchange.sendResponseHeaders(401, response.length()); // 401 = Unauthorized
-                	    OutputStream os = exchange.getResponseBody();
-                	    os.write(response.getBytes());
-                	    os.close(); 
-                	}
+                    if (auth.isCorrect(requestBody)) {
+                        String response = "{\"success\": true}";
+                        exchange.sendResponseHeaders(200, response.length());
+                        OutputStream os = exchange.getResponseBody();
+                        os.write(response.getBytes());
+                        os.close();
+                    } else {
+                        String response = "{\"success\": false, \"message\": \"Wrong username or password\"}";
+                        exchange.sendResponseHeaders(401, response.length()); 
+                        OutputStream os = exchange.getResponseBody();
+                        os.write(response.getBytes());
+                        os.close(); 
+                    }
                 } else {
                     String response = "{\"success\": false, \"message\": \"Invalid request\"}";
                     exchange.sendResponseHeaders(400, response.length());
@@ -86,76 +59,115 @@ public class Main {
                     os.close();
                 }
             } else if ("OPTIONS".equalsIgnoreCase(exchange.getRequestMethod())) {
-                // The OPTIONS method is sent by the browser as a "preflight" request
-                // to check if the server will allow the actual request (e.g., a POST request).
-                // We need to respond with the allowed methods and headers.
                 exchange.getResponseHeaders().add("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
                 exchange.getResponseHeaders().add("Access-Control-Allow-Headers", "Content-Type, Authorization");
-                exchange.sendResponseHeaders(204, -1); // 204 No Content
+                exchange.sendResponseHeaders(204, -1); 
             } else {
-                exchange.sendResponseHeaders(405, -1); // 405 Method Not Allowed
+                exchange.sendResponseHeaders(405, -1); 
             }
         });
 
-        // Set the executor for the HTTP server
-        httpServer.setExecutor(null); // Use the default executor
+        httpServer.setExecutor(null); 
 
-        // --- WebSocket Server Setup ---
         WebSocketServer webSocketServer = new WebSocketServer(new InetSocketAddress(WS_PORT)) {
             @Override
-            public void onOpen(WebSocket conn, ClientHandshake handshake) {
-                clients.add(conn);
-                System.out.println("New client connected: " + conn.getRemoteSocketAddress());
-                broadcast("New client connected: " + conn.getRemoteSocketAddress());
-            }
+            public void onOpen(WebSocket conn, ClientHandshake handshake) {}
 
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                clients.remove(conn);
-                System.out.println("Client disconnected: " + conn.getRemoteSocketAddress());
-                broadcast("Client disconnected: " + conn.getRemoteSocketAddress());
+                String username = activeUsers.remove(conn);
+                if (username != null) {
+                    for (Set<String> channel : voiceChannels.values()) {
+                        channel.remove(username);
+                    }
+                }
+                broadcastUserList();
+                broadcastVoiceList();
             }
 
             @Override
             public void onMessage(WebSocket conn, String message) {
-                System.out.println("Message from client " + conn.getRemoteSocketAddress() + ": " + message);
-                // Broadcast the message to all other clients
-                broadcast(conn.getRemoteSocketAddress() + ": " + message);
+                try {
+                    JsonObject json = JsonParser.parseString(message).getAsJsonObject();
+                    String type = json.get("type").getAsString();
+
+                    if ("join".equals(type)) {
+                        activeUsers.put(conn, json.get("username").getAsString());
+                        broadcastUserList();
+                        broadcastVoiceList();
+                    } else if ("chat".equals(type)) {
+                        String sender = activeUsers.getOrDefault(conn, "Unknown");
+                        JsonObject out = new JsonObject();
+                        out.addProperty("type", "chat");
+                        out.addProperty("username", sender);
+                        out.addProperty("message", json.get("message").getAsString());
+                        broadcast(out.toString());
+                    } else if ("join-voice".equals(type)) {
+                        String channelName = json.get("channel").getAsString();
+                        String username = activeUsers.get(conn);
+                        
+                        for (Set<String> usersInChannel : voiceChannels.values()) {
+                            usersInChannel.remove(username);
+                        }
+                        
+                        Set<String> channel = voiceChannels.computeIfAbsent(channelName, k -> ConcurrentHashMap.newKeySet());
+                        
+                        // Notify existing users so they can initiate WebRTC Offer
+                        JsonObject notify = new JsonObject();
+                        notify.addProperty("type", "user-joined-voice");
+                        notify.addProperty("username", username);
+                        for (Map.Entry<WebSocket, String> entry : activeUsers.entrySet()) {
+                            if (channel.contains(entry.getValue())) {
+                                entry.getKey().send(notify.toString());
+                            }
+                        }
+                        
+                        channel.add(username);
+                        broadcastVoiceList();
+                        
+                    } else if (type.equals("webrtc-offer") || type.equals("webrtc-answer") || type.equals("webrtc-ice")) {
+                        String target = json.get("target").getAsString();
+                        String sender = activeUsers.get(conn);
+                        json.addProperty("sender", sender); 
+                        
+                        for (Map.Entry<WebSocket, String> entry : activeUsers.entrySet()) {
+                            if (entry.getValue().equals(target)) {
+                                entry.getKey().send(json.toString());
+                                break;
+                            }
+                        }
+                    }
+                } catch (Exception e) {}
             }
 
             @Override
-            public void onError(WebSocket conn, Exception ex) {
-                ex.printStackTrace();
-                if (conn != null) {
-                    clients.remove(conn);
-                    // some errors like port binding failed may not be assignable to a specific websocket
-                }
-            }
+            public void onError(WebSocket conn, Exception ex) {}
 
             @Override
-            public void onStart() {
-                System.out.println("WebSocket server started successfully");
-                setConnectionLostTimeout(0);
-                setConnectionLostTimeout(100);
-            }
+            public void onStart() {}
         };
 
-        // Start both servers
         httpServer.start();
         webSocketServer.start();
-
-        System.out.println("HTTP and WebSocket server started on port " + HTTP_PORT + " and " + WS_PORT);
     }
 
-    /**
-     * Broadcasts a message to all connected clients.
-     * @param message The message to broadcast.
-     */
+    private static void broadcastUserList() {
+        JsonObject out = new JsonObject();
+        out.addProperty("type", "users");
+        out.add("list", gson.toJsonTree(activeUsers.values()));
+        broadcast(out.toString());
+    }
+
+    private static void broadcastVoiceList() {
+        JsonObject out = new JsonObject();
+        out.addProperty("type", "voice-users");
+        out.add("channels", gson.toJsonTree(voiceChannels));
+        broadcast(out.toString());
+    }
+
     private static void broadcast(String message) {
-        synchronized (clients) {
-            for (WebSocket client : clients) {
-                client.send(message);
-            }
+        for (WebSocket client : activeUsers.keySet()) {
+            client.send(message);
         }
     }
 }

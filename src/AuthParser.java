@@ -1,11 +1,11 @@
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Objects; // Import added
+import java.util.Objects;
 
 public class AuthParser {
 
-    // Updated Regex: Added \\s* to allow for spaces (e.g., "username": 123 vs "username":123)
-    private static final Pattern AUTH_PATTERN = Pattern.compile("\"username\"\\s*:\\s*(\\d+)\\s*,\\s*\"password\"\\s*:\\s*(\\d+)");
+    // Updated Regex: Added -? to allow for negative numbers
+    private static final Pattern AUTH_PATTERN = Pattern.compile("\"username\"\\s*:\\s*(-?\\d+)\\s*,\\s*\"password\"\\s*:\\s*(-?\\d+)");
 
     public static class Credentials {
         private final int username;
@@ -19,7 +19,6 @@ public class AuthParser {
         public int getUsername() { return username; }
         public int getPassword() { return password; }
 
-        // --- NEW CODE: Allows .equals() to work properly ---
         @Override
         public boolean equals(Object o) {
             if (this == o) return true;
@@ -32,7 +31,6 @@ public class AuthParser {
         public int hashCode() {
             return Objects.hash(username, password);
         }
-        // ----------------------------------------------------
     }
 
     public static Credentials parse(String input) {
