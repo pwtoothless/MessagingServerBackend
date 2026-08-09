@@ -6,9 +6,9 @@
 		</attributes>
 	</classpathentry>
 	<classpathentry kind="src" path="src"/>
-	<classpathentry kind="lib" path="Libraries/gson-2.13.1.jar"/>
-	<classpathentry kind="lib" path="Libraries/Java-WebSocket-1.6.0.jar"/>
-	<classpathentry kind="lib" path="Libraries/slf4j-api-2.0.7.jar"/>
-	<classpathentry kind="lib" path="Libraries/slf4j-simple-2.0.7.jar"/>
+	<classpathentry kind="lib" path="lib/gson-2.13.1.jar"/>
+	<classpathentry kind="lib" path="lib/Java-WebSocket-1.6.0.jar"/>
+	<classpathentry kind="lib" path="lib/slf4j-api-2.0.7.jar"/>
+	<classpathentry kind="lib" path="lib/slf4j-simple-2.0.7.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

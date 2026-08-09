@@ -3,17 +3,19 @@ FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 COPY . .
 
-# Finds and compiles all .java files, including those in subdirectories
-RUN find . -name "*.java" > sources.txt && javac @sources.txt
+# Compile using any .jar files found in a "lib" folder
+RUN find . -name "*.java" > sources.txt && \
+    javac -cp ".:lib/*" @sources.txt
 
 # Stage 2: Run the compiled code
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# Copy the compiled .class files from the builder stage
+# Copy the compiled files and the lib folder
 COPY --from=builder /app .
 
 EXPOSE 8080
 
-# Replace 'Main' with the exact name of your main class
-ENTRYPOINT ["java", "Main"]
+# Run the app, telling Java where to find the libraries
+# NOTE: Replace 'Main' with your actual class name or package.Main
+ENTRYPOINT ["java", "-cp", ".:lib/*", "Main"]
