@@ -13,7 +13,7 @@ public class Main {
         Authentication auth = new Authentication();
         
         HttpServer httpServer = HttpServer.create(new InetSocketAddress(HTTP_PORT), 0);
-        httpServer.createContext("/login", new LoginHttpHandler(auth));
+        httpServer.createContext("/api/login", new LoginHttpHandler(auth)); 
         httpServer.setExecutor(null); 
 
         ChatWebSocketServer webSocketServer = new ChatWebSocketServer(WS_PORT, state);
