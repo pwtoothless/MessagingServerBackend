@@ -18,4 +18,4 @@ EXPOSE 8080
 
 # Run the app, telling Java where to find the libraries
 # NOTE: Replace 'Main' with your actual class name or package.Main
-ENTRYPOINT ["java", "-cp", ".:lib/*", "Main"]
+ENTRYPOINT ["java", "-cp", ".:src/:lib/*", "Main"]
