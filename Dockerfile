@@ -14,7 +14,7 @@ WORKDIR /app
 # Copy the compiled files and the lib folder
 COPY --from=builder /app .
 
-EXPOSE 8080
+EXPOSE 8081 8082
 
 # Run the app, telling Java where to find the libraries
 # NOTE: Replace 'Main' with your actual class name or package.Main
